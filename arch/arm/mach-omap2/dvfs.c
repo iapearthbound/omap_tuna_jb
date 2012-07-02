@@ -28,6 +28,10 @@
 #include "powerdomain.h"
 #include "pm.h"
 
+#ifdef CONFIG_LIVE_OC
+#include <linux/live_oc.h>
+#endif
+
 /**
  * DOC: Introduction
  * =================
@@ -1040,6 +1044,11 @@ int omap_device_scale(struct device *req_dev, struct device *target_dev,
 	/* Fall through */
 out:
 	mutex_unlock(&omap_dvfs_lock);
+
+#ifdef CONFIG_LIVE_OC
+ liveoc_register_dvfsmutex(&omap_dvfs_lock);
+#endif
+
 	return ret;
 }
 EXPORT_SYMBOL(omap_device_scale);
