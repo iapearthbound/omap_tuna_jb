@@ -69,7 +69,7 @@ vr_get_data(struct request_queue *q)
 return q->elevator->elevator_data;
 }
 
-static void
+/*static void
 vr_add_rq_rb(struct vr_data *vd, struct request *rq)
 {
 struct request *alias = elv_rb_add(&vd->sort_list, rq);
@@ -92,7 +92,7 @@ vd->prev_rq = rq;
 BUG_ON(vd->next_rq && vd->next_rq == vd->prev_rq);
 BUG_ON(vd->next_rq && vd->prev_rq && blk_rq_pos(vd->next_rq) < blk_rq_pos(vd->prev_rq));
 }
-
+*/
 static void
 vr_del_rq_rb(struct vr_data *vd, struct request *rq)
 {
@@ -121,7 +121,7 @@ vr_add_request(struct request_queue *q, struct request *rq)
 struct vr_data *vd = vr_get_data(q);
 const int dir = rq_is_sync(rq);
 
-vr_add_rq_rb(vd, rq);
+
 
 if (vd->fifo_expire[dir]) {
 rq_set_fifo_time(rq, jiffies + vd->fifo_expire[dir]);
