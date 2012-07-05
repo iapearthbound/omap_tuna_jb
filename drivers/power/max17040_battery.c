@@ -295,9 +295,9 @@ static void max17040_charger_update(struct max17040_chip *chip)
 	switch (chip->charger_status) {
 	case STATUS_CHARGABLE:
 #ifdef CONFIG_BLX
-		if ((get_charginglimit() != MAX_CHARGINGLIMIT && chip->soc >= get_charginglimit()) ||
-		    (chip->pdata->is_full_charge() && chip->soc >= MAX17040_BATTERY_FULL &&
-		     chip->vcell > chip->pdata->fully_charged_vol)) {
+	if ((get_charginglimit() != MAX_CHARGINGLIMIT && chip->soc >= get_charginglimit()) ||
+		(chip->pdata->is_full_charge() && chip->soc >= MAX17040_BATTERY_FULL &&
+		chip->vcell > chip->pdata->fully_charged_vol)) {
 #else
 		if (chip->pdata->is_full_charge() &&
 			chip->soc >= MAX17040_BATTERY_FULL &&
@@ -323,8 +323,8 @@ static void max17040_charger_update(struct max17040_chip *chip)
 
 	case STATUS_CHARGE_FULL:
 #ifdef CONFIG_BLX
-		if ((get_charginglimit() == MAX_CHARGINGLIMIT || chip->soc < get_charginglimit()) &&
-		    chip->vcell <= chip->pdata->recharge_vol) {
+	if ((get_charginglimit() == MAX_CHARGINGLIMIT || chip->soc < get_charginglimit()) &&
+		chip->vcell <= chip->pdata->recharge_vol) {
 #else
 		if (chip->vcell <= chip->pdata->recharge_vol) {
 #endif
@@ -344,8 +344,8 @@ static void max17040_charger_update(struct max17040_chip *chip)
 
 	case STATUS_CHARGE_TIMEOVER:
 #ifdef CONFIG_BLX
-		if ((get_charginglimit() == MAX_CHARGINGLIMIT || chip->soc < get_charginglimit()) &&
-		    chip->vcell <= chip->pdata->fully_charged_vol) {
+	if ((get_charginglimit() == MAX_CHARGINGLIMIT || chip->soc < get_charginglimit()) &&
+		chip->vcell <= chip->pdata->fully_charged_vol) {
 #else
 		if (chip->vcell <= chip->pdata->fully_charged_vol) {
 #endif

@@ -42,6 +42,10 @@
 
 #include "dvfs.h"
 
+#ifdef CONFIG_CUSTOM_VOLTAGE
+#include <linux/custom_voltage.h>
+#endif
+
 #ifdef CONFIG_SMP
 struct lpj_info {
 	unsigned long	ref;
@@ -78,40 +82,9 @@ static unsigned int omap_getspeed(unsigned int cpu)
 	return rate;
 }
 
-static void omap_cpufreq_lpj_recalculate(unsigned int target_freq,
-					 unsigned int cur_freq)
-{
- #ifdef CONFIG_SMP
-	unsigned int i;
-
-	/*
-	 * Note that loops_per_jiffy is not updated on SMP systems in
-	 * cpufreq driver. So, update the per-CPU loops_per_jiffy value
-	 * on frequency transition. We need to update all dependent CPUs.
-	 */
-	for_each_possible_cpu(i) {
-		struct lpj_info *lpj = &per_cpu(lpj_ref, i);
-		if (!lpj->freq) {
-			lpj->ref = per_cpu(cpu_data, i).loops_per_jiffy;
-			lpj->freq = cur_freq;
-		}
-
-		per_cpu(cpu_data, i).loops_per_jiffy =
-			cpufreq_scale(lpj->ref, lpj->freq, target_freq);
-	}
-
-	/* And don't forget to adjust the global one */
-	if (!global_lpj_ref.freq) {
-		global_lpj_ref.ref = loops_per_jiffy;
-		global_lpj_ref.freq = cur_freq;
-	}
-	loops_per_jiffy = cpufreq_scale(global_lpj_ref.ref, global_lpj_ref.freq,
-					target_freq);
-#endif
-}
-
 static int omap_cpufreq_scale(unsigned int target_freq, unsigned int cur_freq)
 {
+	unsigned int i;
 	int ret;
 	struct cpufreq_freqs freqs;
 
@@ -141,15 +114,35 @@ static int omap_cpufreq_scale(unsigned int target_freq, unsigned int cur_freq)
 	pr_info("cpufreq-omap: transition: %u --> %u\n", freqs.old, freqs.new);
 #endif
 
-	if (target_freq > cur_freq)
-		omap_cpufreq_lpj_recalculate(freqs.new, freqs.old);
-
 	ret = omap_device_scale(mpu_dev, mpu_dev, freqs.new * 1000);
 
 	freqs.new = omap_getspeed(0);
 
-	if (target_freq < cur_freq)
-		omap_cpufreq_lpj_recalculate(freqs.new, freqs.old);
+#ifdef CONFIG_SMP
+	/*
+	 * Note that loops_per_jiffy is not updated on SMP systems in
+	 * cpufreq driver. So, update the per-CPU loops_per_jiffy value
+	 * on frequency transition. We need to update all dependent CPUs.
+	 */
+	for_each_possible_cpu(i) {
+		struct lpj_info *lpj = &per_cpu(lpj_ref, i);
+		if (!lpj->freq) {
+			lpj->ref = per_cpu(cpu_data, i).loops_per_jiffy;
+			lpj->freq = freqs.old;
+		}
+
+		per_cpu(cpu_data, i).loops_per_jiffy =
+			cpufreq_scale(lpj->ref, lpj->freq, freqs.new);
+	}
+
+	/* And don't forget to adjust the global one */
+	if (!global_lpj_ref.freq) {
+		global_lpj_ref.ref = loops_per_jiffy;
+		global_lpj_ref.freq = freqs.old;
+	}
+	loops_per_jiffy = cpufreq_scale(global_lpj_ref.ref, global_lpj_ref.freq,
+					freqs.new);
+#endif
 
 	/* notifiers */
 	for_each_online_cpu(freqs.cpu)
@@ -371,7 +364,11 @@ static int __cpuinit omap_cpu_init(struct cpufreq_policy *policy)
 	}
 
 	/* FIXME: what's the actual transition time? */
-	policy->cpuinfo.transition_latency = 30 * 1000;
+	policy->cpuinfo.transition_latency = 300 * 1000;
+
+#ifdef CONFIG_CUSTOM_VOLTAGE
+	customvoltage_register_freqmutex(&omap_cpufreq_lock);
+#endif
 
 	return 0;
 
@@ -432,114 +429,32 @@ struct freq_attr omap_cpufreq_attr_screen_off_freq = {
 	.store = store_screen_off_freq,
 };
 
-/*
- * OMAP4 MPU voltage control via cpufreq by Michael Huang (coolbho3k)
- *
- * Note: Each opp needs to have a discrete entry in both volt data and
- * dependent volt data (in opp4xxx_data.c), or voltage control breaks. Make a
- * new voltage entry for each opp. Keep this in mind when adding extra
- * frequencies.
- */
-
-/* struct opp is defined elsewhere, but not in any accessible header files */
-struct opp {
-        struct list_head node;
-
-        bool available;
-        unsigned long rate;
-        unsigned long u_volt;
-
-        struct device_opp *dev_opp;
-};
-
-static ssize_t show_uv_mv_table(struct cpufreq_policy *policy, char *buf)
+#ifdef CONFIG_CUSTOM_VOLTAGE
+static ssize_t show_UV_mV_table(struct cpufreq_policy * policy, char * buf)
 {
-	int i = 0;
-	unsigned long volt_cur;
-	char *out = buf;
-	struct opp *opp_cur;
-
-	/* Reverse order sysfs entries for consistency */
-	while(freq_table[i].frequency != CPUFREQ_TABLE_END)
-                i++;
-
-	/* For each entry in the cpufreq table, print the voltage */
-	for(i--; i >= 0; i--) {
-		if(freq_table[i].frequency != CPUFREQ_ENTRY_INVALID) {
-			/* Find the opp for this frequency */
-			opp_cur = opp_find_freq_exact(mpu_dev,
-				freq_table[i].frequency*1000, true);
-			/* sprint the voltage (mV)/frequency (MHz) pairs */
-			volt_cur = opp_cur->u_volt;
-			out += sprintf(out, "%umhz: %lu mV\n",
-				freq_table[i].frequency/1000, volt_cur/1000);
-		}
-	}
-        return out-buf;
+    return customvoltage_mpuvolt_read(NULL, NULL, buf);
 }
 
-static ssize_t store_uv_mv_table(struct cpufreq_policy *policy,
-	const char *buf, size_t count)
+static ssize_t store_UV_mV_table(struct cpufreq_policy * policy, const char * buf, size_t count)
 {
-	int i = 0;
-	unsigned long volt_cur, volt_old;
-	int ret;
-	char size_cur[16];
-	struct opp *opp_cur;
-	struct voltagedomain *mpu_voltdm;
-	mpu_voltdm = voltdm_lookup("mpu");
-
-	while(freq_table[i].frequency != CPUFREQ_TABLE_END)
-		i++;
-
-	for(i--; i >= 0; i--) {
-		if(freq_table[i].frequency != CPUFREQ_ENTRY_INVALID) {
-			ret = sscanf(buf, "%lu", &volt_cur);
-			if(ret != 1) {
-				return -EINVAL;
-			}
-
-			/* Alter voltage. First do it in our opp */
-			opp_cur = opp_find_freq_exact(mpu_dev,
-				freq_table[i].frequency*1000, true);
-			opp_cur->u_volt = volt_cur*1000;
-
-			/* Then we need to alter voltage domains */
-			/* Save our old voltage */
-			volt_old = mpu_voltdm->vdd->volt_data[i].volt_nominal;
-			/* Change our main and dependent voltage tables */
-			mpu_voltdm->vdd->
-				volt_data[i].volt_nominal = volt_cur*1000;
-			mpu_voltdm->vdd->dep_vdd_info->
-				dep_table[i].main_vdd_volt = volt_cur*1000;
-
-			/* Alter current voltage in voltdm, if appropriate */
-			if(volt_old == mpu_voltdm->curr_volt->volt_nominal) {
-				mpu_voltdm->curr_volt->volt_nominal = volt_cur*1000;
-			}
-
-			/* Non-standard sysfs interface: advance buf */
-			ret = sscanf(buf, "%s", size_cur);
-			buf += (strlen(size_cur)+1);
-		}
-		else {
-			pr_err("%s: frequency entry invalid for %u\n",
-				__func__, freq_table[i].frequency);
-		}
-	}
-	return count;
+    return customvoltage_mpuvolt_write(NULL, NULL, buf, count);
 }
 
-static struct freq_attr omap_uv_mv_table = {
-	.attr = {.name = "UV_mV_table", .mode=0666,},
-	.show = show_uv_mv_table,
-	.store = store_uv_mv_table,
+static struct freq_attr omap_UV_mV_table = {
+    .attr = {.name = "UV_mV_table",
+	     .mode=0644,
+    },
+    .show = show_UV_mV_table,
+    .store = store_UV_mV_table,
 };
+#endif
 
 static struct freq_attr *omap_cpufreq_attr[] = {
 	&cpufreq_freq_attr_scaling_available_freqs,
 	&omap_cpufreq_attr_screen_off_freq,
-	&omap_uv_mv_table,
+#ifdef CONFIG_CUSTOM_VOLTAGE
+	&omap_UV_mV_table,
+#endif
 	NULL,
 };
 

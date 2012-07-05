@@ -352,6 +352,7 @@ int __init omap4_opp_init(void)
 		omap4_mpu_opp_enable(1700000000);
 	}*/
 
+
 	return r;
 }
 device_initcall(omap4_opp_init);
