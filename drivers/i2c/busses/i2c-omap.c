@@ -397,7 +397,7 @@ static int omap_i2c_init(struct omap_i2c_dev *dev)
 						"for controller reset\n");
 				return -ETIMEDOUT;
 			}
-			msleep(1);
+			usleep_range(500, 1000);
 		}
 
 		/* SYSC register is cleared by the reset; rewrite it */
@@ -554,7 +554,7 @@ static int omap_i2c_wait_for_bb(struct omap_i2c_dev *dev)
 			omap_i2c_dump(dev);
 			return -ETIMEDOUT;
 		}
-		msleep(1);
+		usleep_range(250, 500);
 	}
 
 	return 0;
@@ -695,7 +695,7 @@ omap_i2c_xfer(struct i2c_adapter *adap, struct i2c_msg msgs[], int num)
 				OMAP_I2C_SYSTEST_FREE |
 				(2 << OMAP_I2C_SYSTEST_TMODE_SHIFT));
 		omap_i2c_write_reg(dev, OMAP_I2C_SYSTEST_REG, val);
-		msleep(1);
+		usleep_range(250, 500);
 		omap_i2c_init(dev);
 		r = omap_i2c_wait_for_bb(dev);
 	}
@@ -1206,7 +1206,10 @@ omap_i2c_remove(struct platform_device *pdev)
 
 	free_irq(dev->irq, dev);
 	i2c_del_adapter(&dev->adapter);
+	pm_runtime_get_sync(&pdev->dev);
 	omap_i2c_write_reg(dev, OMAP_I2C_CON_REG, 0);
+	pm_runtime_put(&pdev->dev);
+	pm_runtime_disable(&pdev->dev);
 	iounmap(dev->base);
 	if (dev->pm_qos) {
 		pm_qos_remove_request(dev->pm_qos);
