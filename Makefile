@@ -1,6 +1,6 @@
 VERSION = 3
 PATCHLEVEL = 0
-SUBLEVEL = 43
+SUBLEVEL = 45
 EXTRAVERSION =
 NAME = Sneaky Weasel
 
@@ -372,7 +372,8 @@ KBUILD_CFLAGS   := -Wall -Wundef -Wstrict-prototypes -Wno-trigraphs \
 		   -funswitch-loops -fpredictive-commoning -fgcse-after-reload \
 		   -fno-delete-null-pointer-checks \
 		   -mfpu=neon \
-
+		   -mcpu=cortex-a9 \
+		   -mno-unaligned-access
 
 KBUILD_AFLAGS_KERNEL :=
 KBUILD_CFLAGS_KERNEL :=
